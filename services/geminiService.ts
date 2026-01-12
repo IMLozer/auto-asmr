@@ -2,9 +2,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { RestorationScene, YouTubeMetadata, StoryboardResponse } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Always initialize with process.env.API_KEY as per guidelines.
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 export const generateTitles = async (carSpec?: { year?: string; brand?: string; model?: string }): Promise<string[]> => {
+  const ai = getAI();
   let specContext = "";
   if (carSpec && (carSpec.year !== "any" || carSpec.brand !== "any" || carSpec.model !== "any")) {
     specContext = `Specifically for a: ${carSpec.year !== "any" ? carSpec.year : "any year"} ${carSpec.brand !== "any" ? carSpec.brand : "any brand"} ${carSpec.model !== "any" ? carSpec.model : "any model"}.`;
@@ -24,17 +26,21 @@ export const generateTitles = async (carSpec?: { year?: string; brand?: string; 
     - Rules: Professional, cinematic, no emojis, one per line. Focus on extreme restoration conditions and high-end detailing.
     - Spelling: Ensure perfect spelling and no typos.`;
 
+  // Use ai.models.generateContent to query the Gemini model.
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: prompt,
     config: { thinkingConfig: { thinkingBudget: 0 } }
   });
 
+  // Extract the response text directly via the .text property.
   const text = response.text || "";
   return text.split('\n').filter(line => line.trim().length > 0).slice(0, 5);
 };
 
 export const generateFullProject = async (selectedTitle: string, sceneCount: number = 20): Promise<StoryboardResponse> => {
+  const ai = getAI();
+  // Using responseSchema for structured JSON output as recommended.
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     config: {
@@ -86,43 +92,34 @@ STRICT NARRATIVE & VISUAL RULES:
 1. VEHICLE CONSISTENCY (CRITICAL):
    - You MUST extract the YEAR, BRAND, and MODEL from the title: "${selectedTitle}".
    - EVERY SINGLE ONE of the ${sceneCount} visual prompts MUST explicitly mention this specific YEAR, BRAND, and MODEL.
-   - The vehicle must never change.
-
-2. SCENE 1 - "The Honorable Acquisition": 
-   - Depict the creator meeting a lonely, isolated person.
-   - The car is SEVERELY DAMAGED and partially covered in dust.
-   - The creator hands a generous stack of money to the person in a respectful exchange.
-
-3. VISUAL THEME CONSISTENCY:
-   - THE CAR COLOR: Pick one specific car color appropriate for the model and ensure this specific color is mentioned in EVERY visual prompt.
-   - INITIAL STATE: In the first 30% of scenes, the car must look extremely damaged, neglected, and dirty.
-   - PROGRESSION: Show a gradual, satisfying transition from "wreck" to "showroom masterpiece".
-   - NO TEXT IN IMAGES: ABSOLUTELY NO text, titles, subtitles, stage numbers, watermarks, or logos in the visual prompts. The images MUST be clean cinematic shots without any written characters or typography.
-
-4. SCENE COUNT: Generate exactly ${sceneCount} precise cinematic restoration scenes.
-
-5. SEO METADATA: Description with chapters matching all ${sceneCount} scenes, 10 hashtags, and 15 ranked keywords.
-
-6. QUALITY CONTROL: Ensure perfect spelling for all generated text. Triple-check for typos (e.g., use "Extraction" not "Extraiction").
-
-Focus: Extreme mechanical detail, satisfying ASMR sounds, cinematic workshop lighting, and high emotional impact.`
+2. SCENE 1: Depict the creator meeting a person to buy the car. It is damaged and dusty. 
+3. PROGRESSION: Show a gradual transition from "wreck" to "showroom masterpiece".
+4. NO TEXT IN IMAGES: NO text, titles, watermarks, or logos in visual prompts.
+5. QUALITY: Perfect spelling for all metadata. Triple-check for typos.`
   });
 
-  return JSON.parse(response.text || "{}");
+  // Trim and parse the JSON string from response.text property.
+  const jsonStr = (response.text || "").trim();
+  return JSON.parse(jsonStr || "{}");
 };
 
 export const generateSceneImage = async (prompt: string): Promise<string | null> => {
   try {
+    const ai = getAI();
+    // Image generation with gemini-2.5-flash-image (nano banana).
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `${prompt}. Cinematic car restoration documentary style, ultra-realistic photography, 8k resolution, emotional workshop lighting, hyper-detailed textures. MANDATORY: DO NOT INCLUDE ANY TEXT, LETTERS, NUMBERS, TYPOGRAPHY, CAPTIONS, LABELS, TITLES, WATERMARKS, OR LOGOS IN THE IMAGE. THE IMAGE MUST BE COMPLETELY DEVOID OF WRITTEN LANGUAGE.` }]
+        parts: [{ text: `${prompt}. Cinematic car restoration photography, 8k, ultra-realistic. NO TEXT, NO LOGOS, NO WATERMARKS.` }]
       }
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+    // Iterate through all parts of the response candidates to find the image part.
+    for (const candidate of response.candidates || []) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
       }
     }
   } catch (error) {
