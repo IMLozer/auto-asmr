@@ -2,17 +2,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { RestorationScene, YouTubeMetadata, StoryboardResponse } from "../types";
 
-// Always initialize with process.env.API_KEY as per guidelines.
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
-export const generateTitles = async (carSpec?: { year?: string; brand?: string; model?: string }): Promise<string[]> => {
+export const generateTitles = async (
+  carSpec?: { year?: string; brand?: string; model?: string },
+  customTopicPrompt?: string
+): Promise<string[]> => {
   const ai = getAI();
   let specContext = "";
   if (carSpec && (carSpec.year !== "any" || carSpec.brand !== "any" || carSpec.model !== "any")) {
     specContext = `Specifically for a: ${carSpec.year !== "any" ? carSpec.year : "any year"} ${carSpec.brand !== "any" ? carSpec.brand : "any brand"} ${carSpec.model !== "any" ? carSpec.model : "any model"}.`;
   }
 
-  const prompt = `Generate 5 high-impact, extremely diverse YouTube video titles for ASMR car restoration.
+  const basePrompt = `Generate 5 high-impact, extremely diverse YouTube video titles for ASMR car restoration.
     ${specContext}
     
     Rules for Variety (if no specific car is provided):
@@ -26,21 +28,20 @@ export const generateTitles = async (carSpec?: { year?: string; brand?: string; 
     - Rules: Professional, cinematic, no emojis, one per line. Focus on extreme restoration conditions and high-end detailing.
     - Spelling: Ensure perfect spelling and no typos.`;
 
-  // Use ai.models.generateContent to query the Gemini model.
+  const finalPrompt = customTopicPrompt ? `${customTopicPrompt}\n\nMaintain this format: “ASMR Car Restoration | [Year] [Brand] [Model] | [Condition] [Transformation Type]”` : basePrompt;
+
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: prompt,
+    contents: finalPrompt,
     config: { thinkingConfig: { thinkingBudget: 0 } }
   });
 
-  // Extract the response text directly via the .text property.
   const text = response.text || "";
   return text.split('\n').filter(line => line.trim().length > 0).slice(0, 5);
 };
 
 export const generateFullProject = async (selectedTitle: string, sceneCount: number = 20): Promise<StoryboardResponse> => {
   const ai = getAI();
-  // Using responseSchema for structured JSON output as recommended.
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     config: {
@@ -98,7 +99,6 @@ STRICT NARRATIVE & VISUAL RULES:
 5. QUALITY: Perfect spelling for all metadata. Triple-check for typos.`
   });
 
-  // Trim and parse the JSON string from response.text property.
   const jsonStr = (response.text || "").trim();
   return JSON.parse(jsonStr || "{}");
 };
@@ -106,7 +106,6 @@ STRICT NARRATIVE & VISUAL RULES:
 export const generateSceneImage = async (prompt: string): Promise<string | null> => {
   try {
     const ai = getAI();
-    // Image generation with gemini-2.5-flash-image (nano banana).
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
@@ -114,7 +113,6 @@ export const generateSceneImage = async (prompt: string): Promise<string | null>
       }
     });
 
-    // Iterate through all parts of the response candidates to find the image part.
     for (const candidate of response.candidates || []) {
       for (const part of candidate.content.parts) {
         if (part.inlineData) {
