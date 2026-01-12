@@ -94,6 +94,8 @@ export default function App() {
   const [selectedBrand, setSelectedBrand] = useState<string>("any");
   const [selectedModel, setSelectedModel] = useState<string>("any");
   const [selectedSceneCount, setSelectedSceneCount] = useState<number>(20);
+  const [topicPrompt, setTopicPrompt] = useState<string>("Generate 5 YouTube video titles for ASMR car restoration");
+  const [isAutoStart, setIsAutoStart] = useState<boolean>(false);
 
   const progressIntervalRef = useRef<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -131,25 +133,27 @@ export default function App() {
 
   const showFeedback = (msg: string) => {
     setFeedback(msg);
-    setTimeout(() => setFeedback(null), 3000);
+    setTimeout(() => setFeedback(null), 5000);
   };
 
   const playASMRClick = () => {
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    const ctx = audioCtxRef.current;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(150, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.1, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.1);
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(150, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch(e) {}
   };
 
   const handlePlayScene = (index: number) => {
@@ -217,6 +221,13 @@ export default function App() {
   };
 
   const handleStartAutoASMR = async () => {
+    // Basic verification of the API Key injection
+    if (!process.env.API_KEY || process.env.API_KEY === 'undefined') {
+      showFeedback("CRITICAL ERROR: API_KEY is not defined in Vercel. Please add 'API_KEY' to your Vercel Environment Variables and redeploy.");
+      console.error("Environment Variable Missing: process.env.API_KEY is undefined.");
+      return;
+    }
+
     setLoading(true);
     startLoadingSimulation(80, "Generating Content Ideas...");
     setTitles([]);
@@ -232,9 +243,15 @@ export default function App() {
       stopLoadingSimulation();
       setTitles(generated);
       setStep(AppStep.TITLES);
-    } catch (error) {
-      console.error(error);
-      showFeedback("API Connection Error. Please try again.");
+
+      // Auto Select first title if AutoStart is on
+      if (isAutoStart && generated.length > 0) {
+        setTimeout(() => handleSelectTitle(generated[0]), 1000);
+      }
+    } catch (error: any) {
+      console.error("API Error Trace:", error);
+      const errorMsg = error?.message || "Check your network or API Key status.";
+      showFeedback(`API CONNECTION ERROR: ${errorMsg}`);
     } finally {
       setTimeout(() => {
         setLoading(false);
@@ -285,10 +302,10 @@ export default function App() {
         saveToHistory(data);
         processImageQueue(data.scenes);
       }, 300);
-    } catch (error) {
+    } catch (error: any) {
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-      console.error(error);
-      showFeedback("Project generation failed.");
+      console.error("Generation Error:", error);
+      showFeedback(`Project generation failed: ${error?.message || 'Unknown Error'}`);
       setLoading(false);
     }
   };
@@ -350,7 +367,7 @@ export default function App() {
             <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 rotate-3">
               <SparkleIcon />
             </div>
-            <div className="hidden sm:block">
+            <div className="hidden sm:block text-left">
               <h1 className="text-xl font-black text-white uppercase italic tracking-tighter leading-none">AutoRestorer <span className="text-amber-500">PRO</span></h1>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -411,7 +428,7 @@ export default function App() {
 
       <main className="flex-1 max-w-6xl mx-auto w-full p-4 lg:p-8">
         {feedback && (
-          <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-900 px-6 py-3 rounded-2xl font-black shadow-2xl z-[100] animate-in fade-in slide-in-from-top-4 uppercase text-xs tracking-widest">
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-900 px-6 py-3 rounded-2xl font-black shadow-2xl z-[100] animate-in fade-in slide-in-from-top-4 uppercase text-[10px] tracking-widest text-center max-w-[90vw]">
             {feedback}
           </div>
         )}
@@ -425,14 +442,14 @@ export default function App() {
                 <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-500">
                   <SettingsIcon />
                 </div>
-                <div>
+                <div className="text-left">
                   <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">Project Specification</h3>
                   <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Target Chassis, Era & Narrative Depth</p>
                 </div>
               </div>
 
-              <div className="grid md:grid-cols-4 gap-6">
-                <div className="space-y-3">
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="space-y-3 text-left">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Release Year</label>
                   <select 
                     value={selectedYear}
@@ -448,7 +465,7 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-3 text-left">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Brand / Make</label>
                   <select 
                     value={selectedBrand}
@@ -463,7 +480,7 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-3 text-left">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Specific Model</label>
                   <select 
                     value={selectedModel}
@@ -476,7 +493,7 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-3 text-left">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Scene Count</label>
                   <select 
                     value={selectedSceneCount}
@@ -485,6 +502,32 @@ export default function App() {
                   >
                     {SCENE_COUNT_OPTIONS.map(c => <option key={c} value={c}>{c} SCENES</option>)}
                   </select>
+                </div>
+              </div>
+
+              <div className="mt-8 space-y-4">
+                <div className="space-y-3 text-left">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Topic Prompt Override</label>
+                  <input 
+                    type="text" 
+                    value={topicPrompt}
+                    onChange={(e) => setTopicPrompt(e.target.value)}
+                    placeholder="Enter custom prompt..."
+                    className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors font-bold"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between bg-slate-950/30 p-4 rounded-2xl border border-slate-800/50">
+                   <div className="text-left">
+                     <p className="text-xs font-black text-slate-300 uppercase tracking-widest italic">START AUTO ASMR</p>
+                     <p className="text-[9px] text-slate-500 uppercase font-bold">Instantly architect full project upon title selection</p>
+                   </div>
+                   <button 
+                    onClick={() => setIsAutoStart(!isAutoStart)}
+                    className={`w-14 h-8 rounded-full transition-all flex items-center p-1 ${isAutoStart ? 'bg-amber-500' : 'bg-slate-800'}`}
+                   >
+                     <div className={`w-6 h-6 bg-white rounded-full shadow-lg transform transition-transform ${isAutoStart ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                   </button>
                 </div>
               </div>
 
@@ -541,7 +584,7 @@ export default function App() {
                       onClick={() => loadFromHistory(item)}
                       className="group relative p-6 bg-slate-900/40 hover:bg-slate-800/40 border border-slate-800 rounded-2xl text-left transition-all cursor-pointer flex justify-between items-center"
                     >
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col gap-1 text-left">
                         <span className="text-slate-500 font-mono text-[9px] font-black uppercase tracking-[0.2em]">
                           {new Date(item.timestamp).toLocaleDateString()} — {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -549,7 +592,7 @@ export default function App() {
                       </div>
                       <button 
                         onClick={(e) => deleteFromHistory(e, item.id)}
-                        className="p-3 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
+                        className="p-3 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all shrink-0"
                         title="Delete from Vault"
                       >
                         <TrashIcon />
@@ -574,9 +617,9 @@ export default function App() {
                     The professional storytelling engine for automotive creators. Initiate your first project to unlock the Project Vault.
                   </p>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl">
                    {["SEO RANKING", "8K RENDERING", "PROJECT VAULT", "ASMR LOGIC"].map(item => (
-                     <div key={item} className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl text-[10px] font-black text-slate-600 uppercase tracking-[0.4em] shadow-lg">{item}</div>
+                     <div key={item} className="p-4 bg-slate-900/50 border border-slate-800 rounded-2xl text-[9px] font-black text-slate-600 uppercase tracking-[0.4em] shadow-lg flex items-center justify-center">{item}</div>
                    ))}
                 </div>
               </div>
@@ -596,7 +639,7 @@ export default function App() {
                     <div className="w-14 h-14 bg-red-600/10 rounded-2xl flex items-center justify-center text-red-500">
                       <SearchIcon />
                     </div>
-                    <div>
+                    <div className="text-left">
                       <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter leading-none">SEO Intelligence & Ranking</h2>
                       <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mt-1">High-Volume Keywords Targeting Dashboard</p>
                     </div>
@@ -610,7 +653,7 @@ export default function App() {
                   <div className="p-8 space-y-10 animate-in slide-in-from-top-4 duration-500">
                     <div className="grid lg:grid-cols-[1.5fr_1fr] gap-10">
                       <div className="space-y-8">
-                        <div className="space-y-3">
+                        <div className="space-y-3 text-left">
                           <label className="text-[10px] font-black text-amber-500/60 uppercase tracking-widest flex items-center justify-between">
                             <span>OPTIMIZED VIDEO TITLE</span>
                             <button onClick={() => copyToClipboard(youtubeMetadata.title, "Title")} className="hover:text-amber-500 flex items-center gap-2 transition-all"><CopyIcon /> COPY</button>
@@ -620,7 +663,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="space-y-3 text-left">
                           <label className="text-[10px] font-black text-amber-500/60 uppercase tracking-widest flex items-center justify-between">
                             <span>MASTER DESCRIPTION (W/ CHAPTERS)</span>
                             <button onClick={() => copyToClipboard(youtubeMetadata.description, "Description")} className="hover:text-amber-500 flex items-center gap-2 transition-all"><CopyIcon /> COPY</button>
@@ -632,7 +675,7 @@ export default function App() {
                       </div>
 
                       <div className="space-y-8">
-                        <div className="space-y-4">
+                        <div className="space-y-4 text-left">
                           <label className="text-[10px] font-black text-amber-500/60 uppercase tracking-widest flex items-center justify-between">
                             <span>KEYWORD RANKING POTENTIAL</span>
                             <button onClick={() => copyToClipboard(youtubeMetadata.keywords.map(k => k.term).join(', '), "Keywords")} className="hover:text-amber-500 transition-all"><CopyIcon /></button>
@@ -652,7 +695,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="space-y-3 text-left">
                           <label className="text-[10px] font-black text-amber-500/60 uppercase tracking-widest block">SOCIAL HASHTAGS</label>
                           <div className="flex flex-wrap gap-2">
                             {youtubeMetadata.hashtags.map((ht, i) => (
@@ -728,13 +771,13 @@ export default function App() {
                     )}
                   </div>
 
-                  <div className="flex flex-col justify-center space-y-8">
+                  <div className="flex flex-col justify-center space-y-8 text-left">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-5">
                         <span className="w-14 h-14 bg-slate-800 text-amber-500 text-xl font-bold rounded-[1.25rem] flex items-center justify-center border border-slate-700/50 shadow-inner">
                           {idx + 1}
                         </span>
-                        <div>
+                        <div className="text-left">
                           <h3 className="text-3xl font-bold text-white tracking-tight leading-none">{scene.stageTitle}</h3>
                           <span className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em] mt-2 block">Restoration Cycle Phase 0{idx + 1}</span>
                         </div>
@@ -749,7 +792,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-6">
-                      <div className="space-y-3">
+                      <div className="space-y-3 text-left">
                         <label className="text-[9px] font-black text-amber-500/50 uppercase tracking-[0.3em] flex items-center gap-2">
                           <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
                           Visual Prompt Execution
@@ -759,7 +802,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="space-y-3">
+                      <div className="space-y-3 text-left">
                         <label className="text-[9px] font-black text-amber-500/50 uppercase tracking-[0.3em] flex items-center gap-2">
                           <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
                           ASMR Camera Choreography
